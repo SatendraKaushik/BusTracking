@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Tracker</title>
+    <style>
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script type="text/javascript"
+        src="https://www.bing.com/api/maps/mapcontrol?key=ArSGwElpgs65UXUwCnZ4ibhLzkmxuScTxz0rCq_kgJy35pa2tSq229GIMzMPVQ8P&callback=initMap"
+        async defer></script>
+        <script>let map;
+            const markers = {}; // To store markers for each bus
+            const busPaths = {}; // Store polylines for each bus
+            const busIcons = {}; // Store custom HTML icons
+            
+            function createBusIcon() {
+                return `<div style="width: 80px; height: 80px;">
+                            <img src="https://cdn0.iconfinder.com/data/icons/isometric-city-basic-transport/80/bus-front-01-512.png" 
+                                 alt="Bus Icon" 
+                                 style="width: 100%; height: 100%; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3)); " />
+                        </div>`;
+            }
+            
+            function updateBusMarker(busId, latitude, longitude) {
+                const mapLocation = new Microsoft.Maps.Location(latitude, longitude);
+            
+                // Remove existing marker and icon if they exist
+                if (markers[busId]) {
+                    map.entities.remove(markers[busId]);
+                    if (busIcons[busId]) {
+                        const mapDiv = document.getElementById('map');
+                        mapDiv.removeChild(busIcons[busId]);
+                    }
+                }
+            
+                // Create a new pushpin
+                const pushpin = new Microsoft.Maps.Pushpin(mapLocation, {
+                    visible: false // Hide default pushpin
+                });
+                map.entities.push(pushpin);
+                markers[busId] = pushpin;
+            
+                // Create custom HTML icon
+                const mapDiv = document.getElementById('map');
+                const customMarker = document.createElement('div');
+                customMarker.innerHTML = createBusIcon();
+                customMarker.style.position = 'absolute';
+                customMarker.style.transform = 'translate(-50%, -50%)';
+                customMarker.style.zIndex = '1000';
+                customMarker.style.pointerEvents = 'none';
+            
+                // Update marker position function
+                const updateMarkerPosition = () => {
+                    const point = map.tryLocationToPixel(mapLocation, Microsoft.Maps.PixelReference.control);
+                    if (point) {
+                        customMarker.style.left = `${point.x}px`;
+                        customMarker.style.top = `${point.y}px`;
+                    }
+                };
+            
+                // Add marker to the map div
+                mapDiv.appendChild(customMarker);
+                busIcons[busId] = customMarker;
+            
+                // Update position on map move/zoom
+                Microsoft.Maps.Events.addHandler(map, 'viewchange', updateMarkerPosition);
+                updateMarkerPosition();
+            
+                // Focus map on new location
+                map.setView({
+                    center: mapLocation,
+                    zoom: 25
+                });
+            }
+            
+            function updatePolyline(busId, latitude, longitude) {
+                const storedCoordinates = JSON.parse(localStorage.getItem(busId)) || [];
+                storedCoordinates.push({ latitude, longitude });
+                localStorage.setItem(busId, JSON.stringify(storedCoordinates));
+            
+                // Create a polyline if it doesn't exist
+                if (!busPaths[busId]) {
+                    busPaths[busId] = new Microsoft.Maps.Polyline([], {
+                        strokeColor: 'red',
+                        strokeThickness: 3
+                    });
+                    map.entities.push(busPaths[busId]);
+                }
+            
+                // Update the polyline path
+                const path = storedCoordinates.map(coord => 
+                    new Microsoft.Maps.Location(coord.latitude, coord.longitude)
+                );
+                busPaths[busId].setLocations(path);
+            }
+            
+            function initMap() {
+                // Initial map configuration
+                map = new Microsoft.Maps.Map(document.getElementById('map'), {
+                    center: new Microsoft.Maps.Location(28.7041, 77.1025), // Initial center point
+                    zoom: 25, // Initial zoom level
+                    mapTypeId: Microsoft.Maps.MapTypeId.road
+                });
+            
+                // Add map controls
+                map.setOptions({
+                    showLocateMeButton: false,
+                    showZoomButtons: true,
+                    showScalebar: true,
+                    showMapTypeSelector: true
+                });
+            
+                const socket = io('https://busserver-1.onrender.com'); // Socket connection
+            
+                // Listen for bus location updates
+                socket.on('locationUpdate', (data) => {
+                    const { busId, latitude, longitude } = data;
+                    console.log(data);
+            
+                    // Update bus marker position and focus map
+                    updateBusMarker(busId, latitude, longitude);
+            
+                    // Update the path polyline
+                    updatePolyline(busId, latitude, longitude);
+                });
+            
+                // Handle connection errors
+                socket.on('connect_error', (error) => {
+                    console.error('WebSocket connection error:', error);
+                    alert('Unable to connect to the bus tracking server. Please try again later.');
+                });
+            }
+            
+            // Clear previous tracking data on page load
+            window.onload = function () {
+                const busId = "bus123";
+                localStorage.removeItem(busId);
+                localStorage.clear();
+                console.log('Previous path cleared, ready for new tracking');
+            }
+            
+            </script>
+    <!-- <script>
+        let map;
+        const markers = {}; // To store markers for each bus
+        const busPaths = {}; // Store polylines for each bus
+
+        function createBusIcon() {
+            return `<div style="width: 60px; height: 60px;">
+                        <img src="https://cdn0.iconfinder.com/data/icons/isometric-city-basic-transport/80/bus-front-01-512.png" 
+                             alt="Bus Icon" 
+                             style="width: 100%; height: 100%; filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));" />
+                    </div>`;
+        }
+
+        function addCustomPushpin(busId, latitude, longitude) {
+            const mapDiv = document.getElementById('map');
+            const mapLocation = new Microsoft.Maps.Location(latitude, longitude);
+
+            // Create a custom HTML container
+            const customMarker = document.createElement('div');
+            customMarker.innerHTML = createBusIcon();
+            customMarker.style.position = 'absolute';
+            customMarker.style.transform = 'translate(-50%, -50%)'; // Center the icon
+            customMarker.style.zIndex = '1000';
+
+            // Place marker in correct position on the map
+            const updateMarkerPosition = () => {
+                const point = map.tryLocationToPixel(mapLocation, Microsoft.Maps.PixelReference.control);
+                customMarker.style.left = `${point.x}px`;
+                customMarker.style.top = `${point.y}px`;
+            };
+
+            // Add marker to the map div
+            mapDiv.appendChild(customMarker);
+            map.entities.push(mapLocation);
+
+            // Update position on map move/zoom
+            Microsoft.Maps.Events.addHandler(map, 'viewchange', updateMarkerPosition);
+            updateMarkerPosition();
+        }
+
+        function updatePolyline(busId) {
+            const storedCoordinates = JSON.parse(localStorage.getItem(busId)) || [];
+
+            // Create a polyline if it doesn't exist
+            if (!busPaths[busId]) {
+                busPaths[busId] = new Microsoft.Maps.Polyline([], {
+                    strokeColor: 'red',
+                    strokeThickness: 3
+                });
+                map.entities.push(busPaths[busId]);
+            }
+
+            // Update the polyline path
+            const path = storedCoordinates.map(coord => new Microsoft.Maps.Location(coord.latitude, coord.longitude));
+            busPaths[busId].setLocations(path);
+        }
+
+        function fetchIncomingData(busId) {
+            return new Promise((resolve, reject) => {
+                const socket = io('https://busserver-1.onrender.com');
+
+                socket.on('locationUpdate', (data) => {
+                    if (data.busId === busId) {
+                        const { latitude, longitude } = data;
+                        resolve({ latitude, longitude });
+                    }
+                });
+
+                socket.on('connect_error', (error) => {
+                    reject(error);
+                });
+            });
+        }
+
+        // Refresh localStorage on page reload
+        window.onload = async function () {
+            const busId = "bus123";  // Assuming busId is bus123 for this example
+
+            try {
+                const incomingData = await fetchIncomingData(busId);
+
+                // Update localStorage with new latitude and longitude
+                const storedCoordinates = JSON.parse(localStorage.getItem(busId)) || [];
+                storedCoordinates.push(incomingData);
+                localStorage.setItem(busId, JSON.stringify(storedCoordinates));
+
+                console.log(`localStorage refreshed on reload:`, incomingData);
+
+                // Now update the polyline and pushpin based on the updated data
+                updatePolyline(busId);
+            } catch (error) {
+                console.error('Error fetching bus data:', error);
+                alert('Unable to fetch bus data. Please try again later.');
+            }
+        };
+
+        // Initializing map and handling WebSocket updates
+        function initMap() {
+            map = new Microsoft.Maps.Map(document.getElementById('map'), {
+                center: new Microsoft.Maps.Location(28.7041, 77.1025), // Default center (e.g., New Delhi)
+                zoom: 10, // Default zoom level
+                mapTypeId: Microsoft.Maps.MapTypeId.road
+            });
+
+            // Add map controls
+            map.setOptions({
+                showLocateMeButton: false,
+                showZoomButtons: true,
+                showScalebar: true,
+                showMapTypeSelector: true
+            });
+
+            const socket = io('https://busserver-1.onrender.com'); // Socket connection
+
+            // Listen for bus location updates
+            socket.on('locationUpdate', (data) => {
+                const { busId, latitude, longitude } = data; // Data containing bus ID and location
+                console.log(data);
+
+                // Add a custom pushpin for the bus
+                if (!markers[busId]) {
+                    addCustomPushpin(busId, latitude, longitude);
+                    markers[busId] = true; // Mark this bus as tracked
+                }
+
+                // Update the path polyline
+                const storedCoordinates = JSON.parse(localStorage.getItem(busId)) || [];
+                storedCoordinates.push({ latitude, longitude });
+                localStorage.setItem(busId, JSON.stringify(storedCoordinates));
+
+                updatePolyline(busId);
+            });
+
+            // Handle connection errors
+            socket.on('connect_error', (error) => {
+                console.error('WebSocket connection error:', error);
+                alert('Unable to connect to the bus tracking server. Please try again later.');
+            });
+        }
+        window.onload = function () {
+            const busId = "bus123";
+            clearBusPath(busId);
+            console.log('Previous path cleared, ready for new tracking');
+            localStorage.clear();
+        }  
+        
+        </script> -->
+</body>
+
+</html>
